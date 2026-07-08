@@ -10,6 +10,7 @@ import {
   deleteReview,
 } from "../controllers/reviewController.js";
 import { getStats, getCustomers } from "../controllers/adminController.js";
+import { getMessages, resolveMessage, deleteMessage } from "../controllers/contactController.js";
 
 const router = express.Router();
 
@@ -33,6 +34,11 @@ router.patch("/orders/:id/status", updateOrderStatus);
 router.get("/reviews", getReviews);
 router.patch("/reviews/:id", setReviewStatus);
 router.delete("/reviews/:id", deleteReview);
+
+// Contact Messages
+router.get("/messages", getMessages);
+router.patch("/messages/:id", resolveMessage);
+router.delete("/messages/:id", deleteMessage);
 
 // Dashboard
 router.get("/stats", getStats);
