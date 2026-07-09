@@ -24,6 +24,9 @@ const toSafeUser = (user) => ({
 
 // POST /api/auth/send-otp
 // body: { email, purpose: "register" | "login" }
+// Admins log in with just email + password - no inbox to send an OTP to is
+// assumed, so this responds with otpRequired: false for an admin's email on
+// the login purpose, and the frontend skips straight to "verified".
 export const sendOtp = async (req, res, next) => {
   try {
     const { email, purpose } = req.body;
@@ -45,6 +48,11 @@ export const sendOtp = async (req, res, next) => {
       throw new Error("No account found with this email");
     }
 
+    // Admin accounts skip the OTP step entirely on login.
+    if (purpose === "login" && existingUser.role === "admin") {
+      return res.json({ success: true, otpRequired: false });
+    }
+
     const otp = generateOtp();
     const salt = await bcrypt.genSalt(10);
     const otpHash = await bcrypt.hash(otp, salt);
@@ -60,7 +68,7 @@ export const sendOtp = async (req, res, next) => {
 
     await sendOtpEmail(normalizedEmail, otp);
 
-    res.json({ success: true, message: `OTP sent to ${normalizedEmail}` });
+    res.json({ success: true, otpRequired: true, message: `OTP sent to ${normalizedEmail}` });
   } catch (error) {
     next(error);
   }
@@ -68,8 +76,6 @@ export const sendOtp = async (req, res, next) => {
 
 // POST /api/auth/verify-otp
 // body: { email, otp, purpose }
-// Returns a short-lived verifyToken that register/login require to proceed -
-// this is what actually gates "email must be verified before continuing".
 export const verifyOtp = async (req, res, next) => {
   try {
     const { email, otp, purpose } = req.body;
@@ -171,6 +177,8 @@ export const registerUser = async (req, res, next) => {
 };
 
 // POST /api/auth/login
+// Password is checked first, then OTP is only required for customer
+// accounts - admins (role === "admin") log in with just email + password.
 export const loginUser = async (req, res, next) => {
   try {
     const { email, password, verifyToken } = req.body;
@@ -180,33 +188,36 @@ export const loginUser = async (req, res, next) => {
       throw new Error("Email and password are required");
     }
 
-    if (!verifyToken) {
-      res.status(400);
-      throw new Error("Please verify your email with the OTP first");
-    }
-
-    let decoded;
-    try {
-      decoded = jwt.verify(verifyToken, process.env.JWT_SECRET);
-    } catch {
-      res.status(400);
-      throw new Error("Email verification expired. Please verify again");
-    }
-
-    if (
-      !decoded.verified ||
-      decoded.purpose !== "login" ||
-      decoded.email !== email.trim().toLowerCase()
-    ) {
-      res.status(400);
-      throw new Error("Email verification does not match. Please verify again");
-    }
-
-    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user || !(await user.matchPassword(password))) {
       res.status(401);
       throw new Error("Invalid email or password");
+    }
+
+    if (user.role !== "admin") {
+      if (!verifyToken) {
+        res.status(400);
+        throw new Error("Please verify your email with the OTP first");
+      }
+
+      let decoded;
+      try {
+        decoded = jwt.verify(verifyToken, process.env.JWT_SECRET);
+      } catch {
+        res.status(400);
+        throw new Error("Email verification expired. Please verify again");
+      }
+
+      if (
+        !decoded.verified ||
+        decoded.purpose !== "login" ||
+        decoded.email !== normalizedEmail
+      ) {
+        res.status(400);
+        throw new Error("Email verification does not match. Please verify again");
+      }
     }
 
     res.json({
@@ -219,8 +230,6 @@ export const loginUser = async (req, res, next) => {
 };
 
 // POST /api/auth/google
-// One endpoint handles both "Register with Google" and "Login with Google" -
-// Google already verifies the email for us (no OTP needed on this path).
 export const googleAuth = async (req, res, next) => {
   try {
     const { credential } = req.body;
@@ -251,7 +260,6 @@ export const googleAuth = async (req, res, next) => {
         role: "customer",
       });
     } else if (!user.googleId) {
-      // Existing email/password account linking Google for the first time.
       user.googleId = googleId;
       await user.save();
     }
@@ -267,8 +275,6 @@ export const googleAuth = async (req, res, next) => {
 };
 
 // POST /api/auth/logout
-// Stateless JWT - nothing to invalidate server-side. Kept as a real route
-// anyway so the frontend's authAPI.logout() call has something to hit.
 export const logoutUser = async (req, res) => {
   res.json({ success: true });
 };
