@@ -1,5 +1,14 @@
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import { OAuth2Client } from "google-auth-library";
 import User from "../models/User.js";
+import Otp from "../models/Otp.js";
 import generateToken from "../utils/generateToken.js";
+import generateOtp from "../utils/otp.js";
+import sendOtpEmail from "../utils/sendEmail.js";
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const OTP_EXPIRES_MIN = Number(process.env.OTP_EXPIRES_MIN) || 10;
 
 // Strips the password before a user object ever leaves this file -
 // same shape the frontend's mock toSafeUser() already returns.
@@ -9,17 +18,132 @@ const toSafeUser = (user) => ({
   email: user.email,
   phone: user.phone,
   role: user.role,
+  authProvider: user.authProvider,
   createdAt: user.createdAt,
 });
+
+// POST /api/auth/send-otp
+// body: { email, purpose: "register" | "login" }
+export const sendOtp = async (req, res, next) => {
+  try {
+    const { email, purpose } = req.body;
+
+    if (!email?.trim() || !["register", "login"].includes(purpose)) {
+      res.status(400);
+      throw new Error("A valid email and purpose are required");
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingUser = await User.findOne({ email: normalizedEmail });
+
+    if (purpose === "register" && existingUser) {
+      res.status(400);
+      throw new Error("An account with this email already exists");
+    }
+    if (purpose === "login" && !existingUser) {
+      res.status(404);
+      throw new Error("No account found with this email");
+    }
+
+    const otp = generateOtp();
+    const salt = await bcrypt.genSalt(10);
+    const otpHash = await bcrypt.hash(otp, salt);
+
+    // One active OTP per email+purpose at a time - replace any previous one.
+    await Otp.findOneAndDelete({ email: normalizedEmail, purpose });
+    await Otp.create({
+      email: normalizedEmail,
+      purpose,
+      otpHash,
+      expiresAt: new Date(Date.now() + OTP_EXPIRES_MIN * 60 * 1000),
+    });
+
+    await sendOtpEmail(normalizedEmail, otp);
+
+    res.json({ success: true, message: `OTP sent to ${normalizedEmail}` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/auth/verify-otp
+// body: { email, otp, purpose }
+// Returns a short-lived verifyToken that register/login require to proceed -
+// this is what actually gates "email must be verified before continuing".
+export const verifyOtp = async (req, res, next) => {
+  try {
+    const { email, otp, purpose } = req.body;
+
+    if (!email?.trim() || !otp?.trim() || !["register", "login"].includes(purpose)) {
+      res.status(400);
+      throw new Error("Email, OTP and purpose are required");
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const otpDoc = await Otp.findOne({ email: normalizedEmail, purpose });
+
+    if (!otpDoc || otpDoc.expiresAt < new Date()) {
+      res.status(400);
+      throw new Error("OTP expired. Please request a new one");
+    }
+
+    if (otpDoc.attempts >= 5) {
+      res.status(429);
+      throw new Error("Too many incorrect attempts. Please request a new OTP");
+    }
+
+    const isMatch = await bcrypt.compare(otp.trim(), otpDoc.otpHash);
+    if (!isMatch) {
+      otpDoc.attempts += 1;
+      await otpDoc.save();
+      res.status(400);
+      throw new Error("Incorrect OTP");
+    }
+
+    await Otp.deleteOne({ _id: otpDoc._id });
+
+    const verifyToken = jwt.sign(
+      { email: normalizedEmail, purpose, verified: true },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    res.json({ verifyToken });
+  } catch (error) {
+    next(error);
+  }
+};
 
 // POST /api/auth/register
 export const registerUser = async (req, res, next) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, verifyToken } = req.body;
 
     if (!name || !email || !password) {
       res.status(400);
       throw new Error("Name, email and password are required");
+    }
+
+    if (!verifyToken) {
+      res.status(400);
+      throw new Error("Please verify your email with the OTP first");
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(verifyToken, process.env.JWT_SECRET);
+    } catch {
+      res.status(400);
+      throw new Error("Email verification expired. Please verify again");
+    }
+
+    if (
+      !decoded.verified ||
+      decoded.purpose !== "register" ||
+      decoded.email !== email.trim().toLowerCase()
+    ) {
+      res.status(400);
+      throw new Error("Email verification does not match. Please verify again");
     }
 
     const existingUser = await User.findOne({ email: email.trim().toLowerCase() });
@@ -34,6 +158,7 @@ export const registerUser = async (req, res, next) => {
       phone: phone?.trim() || "",
       password,
       role: "customer",
+      authProvider: "email",
     });
 
     res.status(201).json({
@@ -48,11 +173,33 @@ export const registerUser = async (req, res, next) => {
 // POST /api/auth/login
 export const loginUser = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, verifyToken } = req.body;
 
     if (!email || !password) {
       res.status(400);
       throw new Error("Email and password are required");
+    }
+
+    if (!verifyToken) {
+      res.status(400);
+      throw new Error("Please verify your email with the OTP first");
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(verifyToken, process.env.JWT_SECRET);
+    } catch {
+      res.status(400);
+      throw new Error("Email verification expired. Please verify again");
+    }
+
+    if (
+      !decoded.verified ||
+      decoded.purpose !== "login" ||
+      decoded.email !== email.trim().toLowerCase()
+    ) {
+      res.status(400);
+      throw new Error("Email verification does not match. Please verify again");
     }
 
     const user = await User.findOne({ email: email.trim().toLowerCase() });
@@ -68,6 +215,54 @@ export const loginUser = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// POST /api/auth/google
+// One endpoint handles both "Register with Google" and "Login with Google" -
+// Google already verifies the email for us (no OTP needed on this path).
+export const googleAuth = async (req, res, next) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      res.status(400);
+      throw new Error("Google credential is required");
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+
+    const email = payload.email.toLowerCase();
+    const googleId = payload.sub;
+    const name = payload.name || email.split("@")[0];
+
+    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+
+    if (!user) {
+      user = await User.create({
+        name,
+        email,
+        googleId,
+        authProvider: "google",
+        role: "customer",
+      });
+    } else if (!user.googleId) {
+      // Existing email/password account linking Google for the first time.
+      user.googleId = googleId;
+      await user.save();
+    }
+
+    res.json({
+      user: toSafeUser(user),
+      token: generateToken(user._id, user.role),
+    });
+  } catch (error) {
+    res.status(401);
+    next(new Error("Google sign-in failed. Please try again."));
   }
 };
 

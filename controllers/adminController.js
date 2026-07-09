@@ -75,3 +75,32 @@ export const getCustomers = async (req, res, next) => {
     next(error);
   }
 };
+
+// GET /api/admin/customers/:id/orders (admin only)
+// Powers the "View Orders" drawer on Manage Customers - a customer's full
+// order history (every item, status, and total), newest first.
+export const getCustomerOrders = async (req, res, next) => {
+  try {
+    const customer = await User.findById(req.params.id);
+
+    if (!customer || customer.role !== "customer") {
+      res.status(404);
+      throw new Error("Customer not found");
+    }
+
+    const orders = await Order.find({ userId: customer._id }).sort({ createdAt: -1 });
+
+    res.json({
+      customer: {
+        id: customer._id,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        createdAt: customer.createdAt,
+      },
+      orders,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

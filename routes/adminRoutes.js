@@ -9,7 +9,7 @@ import {
   setReviewStatus,
   deleteReview,
 } from "../controllers/reviewController.js";
-import { getStats, getCustomers } from "../controllers/adminController.js";
+import { getStats, getCustomers, getCustomerOrders } from "../controllers/adminController.js";
 import { getMessages, resolveMessage, deleteMessage } from "../controllers/contactController.js";
 
 const router = express.Router();
@@ -40,8 +40,9 @@ router.get("/messages", getMessages);
 router.patch("/messages/:id", resolveMessage);
 router.delete("/messages/:id", deleteMessage);
 
-// Dashboard
+// Dashboard / Customers
 router.get("/stats", getStats);
 router.get("/customers", getCustomers);
+router.get("/customers/:id/orders", getCustomerOrders);
 
 export default router;
