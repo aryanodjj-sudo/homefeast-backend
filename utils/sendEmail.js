@@ -2,12 +2,17 @@ import nodemailer from "nodemailer";
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || "smtp.gmail.com",
-  port: Number(process.env.EMAIL_PORT) || 587,
-  secure: false,
+  port: Number(process.env.EMAIL_PORT) || 465,
+  secure: Number(process.env.EMAIL_PORT) === 465 || !process.env.EMAIL_PORT,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  // Without these, a blocked/slow SMTP connection hangs the request forever
+  // instead of failing with a clear error - these force it to fail fast.
+  connectionTimeout: 10000, // 10s to establish connection
+  greetingTimeout: 10000,   // 10s to get server greeting
+  socketTimeout: 15000,     // 15s for the whole exchange
 });
 
 export const sendOtpEmail = async (to, otp) => {

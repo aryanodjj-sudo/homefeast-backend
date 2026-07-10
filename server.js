@@ -29,9 +29,10 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-if (process.env.NODE_ENV !== "production") {
-  app.use(morgan("dev"));
-}
+// Request logging - kept on in production too (for now) so Render Logs
+// actually show incoming requests; without this nothing but startup
+// messages ever appears, making live issues impossible to debug.
+app.use(morgan("dev"));
 
 app.get("/", (req, res) => {
   res.json({ message: "HomeFeast API is running" });

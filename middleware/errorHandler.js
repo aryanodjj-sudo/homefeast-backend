@@ -26,6 +26,11 @@ export const errorHandler = (err, req, res, next) => {
     message = `${field ? field.charAt(0).toUpperCase() + field.slice(1) : "Field"} already exists`;
   }
 
+  // Always log the real error to the server console (visible in Render Logs)
+  // regardless of environment - without this, production errors are
+  // completely invisible since only the generic message is sent to the client.
+  console.error(`[${req.method} ${req.originalUrl}] ${statusCode}:`, err);
+
   res.status(statusCode).json({
     message,
     stack: process.env.NODE_ENV === "production" ? undefined : err.stack,
