@@ -21,6 +21,10 @@ const userSchema = new mongoose.Schema(
         return !this.googleId;
       },
     },
+    // Stores a small resized base64 JPEG data URL (~20-40KB) - the frontend
+    // downsizes images to 300px before upload, so no separate file storage
+    // / CDN is needed for a feature this small.
+    avatar: { type: String, default: "" },
     googleId: { type: String, unique: true, sparse: true },
     authProvider: { type: String, enum: ["email", "google"], default: "email" },
     role: { type: String, enum: ["customer", "admin"], default: "customer" },

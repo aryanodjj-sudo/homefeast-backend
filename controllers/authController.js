@@ -17,6 +17,7 @@ const toSafeUser = (user) => ({
   name: user.name,
   email: user.email,
   phone: user.phone,
+  avatar: user.avatar,
   role: user.role,
   authProvider: user.authProvider,
   createdAt: user.createdAt,
@@ -280,9 +281,10 @@ export const logoutUser = async (req, res) => {
 };
 
 // PATCH /api/auth/profile (protected)
+// PATCH /api/auth/profile (protected)
 export const updateProfile = async (req, res, next) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone, avatar } = req.body;
     const user = await User.findById(req.user._id);
 
     if (!user) {
@@ -290,8 +292,9 @@ export const updateProfile = async (req, res, next) => {
       throw new Error("User not found");
     }
 
-    user.name = name?.trim() || user.name;
-    user.phone = phone?.trim() ?? user.phone;
+    if (name !== undefined) user.name = name.trim();
+    if (phone !== undefined) user.phone = phone?.trim() || "";
+    if (avatar !== undefined) user.avatar = avatar;
 
     const updatedUser = await user.save();
     res.json({ user: toSafeUser(updatedUser) });
