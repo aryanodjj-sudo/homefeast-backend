@@ -57,6 +57,7 @@ const orderSchema = new mongoose.Schema(
       enum: ["Placed", "Confirmed", "Preparing", "Out for Delivery", "Delivered", "Cancelled"],
       default: "Placed",
     },
+    isSubscriptionOrder: { type: Boolean, default: false },
     statusHistory: { type: [statusHistorySchema], default: [] },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
