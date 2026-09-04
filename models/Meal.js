@@ -5,6 +5,7 @@ const mealSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     category: { type: String, required: true, trim: true },
     price: { type: Number, required: true, min: 0 },
+    originalPrice: { type: Number, default: null, min: 0 },
     rating: { type: Number, default: 0, min: 0, max: 5 },
     isVeg: { type: Boolean, default: true },
     chefId: { type: Number, default: null },

@@ -11,6 +11,10 @@ import {
 } from "../controllers/reviewController.js";
 import { getStats, getCustomers, getCustomerOrders } from "../controllers/adminController.js";
 import { getMessages, resolveMessage, deleteMessage } from "../controllers/contactController.js";
+import {
+  getAllSubscriptions,
+  updateSubscriptionStatus,
+} from "../controllers/subscriptionController.js";
 
 const router = express.Router();
 
@@ -39,6 +43,10 @@ router.delete("/reviews/:id", deleteReview);
 router.get("/messages", getMessages);
 router.patch("/messages/:id", resolveMessage);
 router.delete("/messages/:id", deleteMessage);
+
+// Subscriptions
+router.get("/subscriptions", getAllSubscriptions);
+router.patch("/subscriptions/:id", updateSubscriptionStatus);
 
 // Dashboard / Customers
 router.get("/stats", getStats);

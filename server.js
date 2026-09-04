@@ -13,6 +13,7 @@ import orderRoutes from "./routes/orderRoutes.js";
 import reviewRoutes from "./routes/reviewRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 
 dotenv.config();
 connectDB();
@@ -29,9 +30,6 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging - kept on in production too (for now) so Render Logs
-// actually show incoming requests; without this nothing but startup
-// messages ever appears, making live issues impossible to debug.
 app.use(morgan("dev"));
 
 app.get("/", (req, res) => {
@@ -45,6 +43,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
